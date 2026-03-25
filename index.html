@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="sr">
 <head>
@@ -20,7 +19,7 @@
         <p>In sano corpore sanus spiritus</p>
       </div>
       <div id="alertLogin" class="alert alert-err"></div>
-      <div class="field"><label>Korisničko ime</label><input id="loginUser" type="text" placeholder="admin" autocomplete="username"/></div>
+      <div class="field"><label>Korisničko ime</label><input id="loginUser" type="text" placeholder="Daniel" autocomplete="username"/></div>
       <div class="field"><label>Lozinka</label><input id="loginPass" type="password" placeholder="••••••••" autocomplete="current-password"/></div>
       <button class="btn btn-primary" onclick="doLogin()">🔐 Prijava</button>
     </div>
@@ -45,9 +44,12 @@
   <!-- TAB: Klijenti -->
   <div class="tab-panel active" id="tabClients">
     <div class="section-title">Dodaj novog klijenta</div>
-    <div style="display:flex;gap:8px;">
-      <input id="newClientFirst" type="text" placeholder="Ime" style="flex:1;"/>
-      <input id="newClientLast"  type="text" placeholder="Prezime" style="flex:1;"/>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <input id="newClientFirst" type="text" placeholder="Ime"     style="flex:1;min-width:80px;"/>
+      <input id="newClientLast"  type="text" placeholder="Prezime" style="flex:1;min-width:80px;"/>
+      <input id="newClientBirth" type="number" placeholder="God. rodj." min="1900" max="2025" step="1" style="width:100px;"/>
+      <input id="newClientHeight" type="number" placeholder="Visina (cm)" min="50" max="250" step="1" style="width:100px;"/>
+      <input id="newClientWeight" type="number" placeholder="Težina (kg)" min="20" max="300" step="0.1" style="width:100px;"/>
       <button class="btn btn-primary btn-sm" onclick="addClient()">+ Dodaj</button>
     </div>
     <div id="alertClient" class="alert alert-err" style="margin-top:10px;"></div>
@@ -71,7 +73,7 @@
         <div class="field"><label>Ponavljanja</label><input id="logReps" type="number" placeholder="12" min="1"/></div>
         <div class="field"><label>Težina (kg) — opciono</label><input id="logWeight" type="number" placeholder="60" step="0.5" min="0"/></div>
       </div>
-      <div class="field"><label>Progress (%)</label><input id="logProgress" type="number" placeholder="65" min="0" max="100"/>
+      <div class="field"><label>Progress (%)</label><input id="logProgress" type="number" placeholder="0" min="0" max="100" readonly/>
         <div style="margin-top:8px;"><div class="prog-wrap"><div class="prog-fill" id="progPreview" style="width:0%"></div></div></div>
       </div>
       <div id="alertLog" class="alert alert-err"></div>
