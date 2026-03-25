@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="sr">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
+<title>💪 Fitness Tracker Pro</title>
+
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<!-- OTPAuth (TOTP) -->
+<script src="https://cdn.jsdelivr.net/npm/otpauth@9.3.2/dist/otpauth.umd.min.js"></script>
+<!-- QRCode.js -->
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+
+<!-- CSS -->
+<link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════
+     SCREEN 1: LOGIN
+══════════════════════════════════════════ -->
+<div id="screenLogin" class="screen active">
+  <div style="display:flex;align-items:center;justify-content:center;min-height:100vh;">
+    <div class="card" style="width:100%;">
+      <div class="logo">
+        <div style="font-size:2.5rem;">💪</div>
+        <h1>FITNESS TRACKER</h1>
+        <p>In sano corpore sanus spiritus</p>
+      </div>
+      <div id="alertLogin" class="alert alert-err"></div>
+      <div class="field">
+        <label>Korisničko ime</label>
+        <input id="loginUser" type="text" placeholder="admin" autocomplete="username"/>
+      </div>
+      <div class="field">
+        <label>Lozinka</label>
+        <input id="loginPass" type="password" placeholder="••••••••" autocomplete="current-password"/>
+      </div>
+      <button class="btn btn-primary" onclick="doLogin()">🔐 Prijava</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     SCREEN 2: 2FA VERIFY
+══════════════════════════════════════════ -->
+<div id="screen2FA" class="screen">
+  <div style="display:flex;align-items:center;justify-content:center;min-height:100vh;">
+    <div class="card" style="width:100%;">
+      <div class="logo">
+        <div style="font-size:2rem;">🔑</div>
+        <h1>2FA VERIFIKACIJA</h1>
+        <p>Unesite kod iz Google Authenticator aplikacije</p>
+      </div>
+      <div id="alert2FA" class="alert alert-err"></div>
+      <div class="field">
+        <label>Jednokratni kod (6 cifara)</label>
+        <input id="totpCode" type="number" placeholder="123456" maxlength="6"
+          style="font-size:1.6rem;text-align:center;letter-spacing:8px;"
+          oninput="if(this.value.length===6) verify2FA()"/>
+      </div>
+      <button class="btn btn-primary" onclick="verify2FA()">✅ Potvrdi</button>
+      <button class="btn btn-ghost" onclick="backToLogin()" style="margin-top:8px;">← Nazad</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     SCREEN 3: 2FA SETUP (first time)
+══════════════════════════════════════════ -->
+<div id="screen2FASetup" class="screen">
+  <div style="display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px;">
+    <div class="card" style="width:100%;">
+      <div class="logo">
+        <div style="font-size:2rem;">📱</div>
+        <h1>POSTAVI 2FA</h1>
+        <p>Jednokratno podešavanje — skenirajte QR kod</p>
+      </div>
+      <p style="font-size:0.85rem;color:var(--muted);margin-bottom:12px;text-align:center;">
+        Otvorite <b style="color:var(--text)">Google Authenticator</b> ili
+        <b style="color:var(--text)">Authy</b> i skenirajte:
+      </p>
+      <div id="qrContainer"></div>
+      <p style="font-size:0.75rem;color:var(--muted);text-align:center;margin-bottom:16px;">
+        Ili ručno unesite tajni ključ:<br>
+        <code id="secretDisplay" style="color:var(--accent2);letter-spacing:3px;font-size:0.85rem;"></code>
+      </p>
+      <div id="alertSetup" class="alert alert-err"></div>
+      <div class="field">
+        <label>Potvrdite kod da biste aktivirali 2FA</label>
+        <input id="setupCode" type="number" placeholder="123456" maxlength="6"
+          style="font-size:1.4rem;text-align:center;letter-spacing:6px;"/>
+      </div>
+      <button class="btn btn-success" onclick="confirmSetup2FA()">✅ Aktiviraj 2FA</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     SCREEN 4: MAIN APP
+══════════════════════════════════════════ -->
+<div id="screenApp" class="screen">
+
+  <!-- Top Nav -->
+  <nav>
+    <div class="nav-title">💪 FITNESS TRACKER</div>
+    <div class="nav-right">
+      <div style="font-size:0.78rem;color:var(--muted);" id="navUser"></div>
+      <div class="avatar" id="navAvatar" onclick="showTab('tabSettings')">A</div>
+    </div>
+  </nav>
+
+  <!-- Tab Bar -->
+  <div class="tab-bar">
+    <button class="tab-btn active" onclick="showTab('tabClients')"  id="btnTabClients" >👥 Klijenti</button>
+    <button class="tab-btn"        onclick="showTab('tabLog')"      id="btnTabLog"     >📋 Unos vežbe</button>
+    <button class="tab-btn"        onclick="showTab('tabCharts')"   id="btnTabCharts"  >📊 Progress</button>
+    <button class="tab-btn"        onclick="showTab('tabSettings')" id="btnTabSettings">⚙️ Podešavanja</button>
+  </div>
+
+  <!-- ── TAB: Klijenti ── -->
+  <div class="tab-panel active" id="tabClients">
+    <div class="section-title">Dodaj novog klijenta</div>
+    <div style="display:flex;gap:8px;">
+      <input id="newClientFirst" type="text" placeholder="Ime"     style="flex:1;"/>
+      <input id="newClientLast"  type="text" placeholder="Prezime" style="flex:1;"/>
+      <button class="btn btn-primary btn-sm" onclick="addClient()">+ Dodaj</button>
+    </div>
+    <div id="alertClient" class="alert alert-err" style="margin-top:10px;"></div>
+    <div class="section-title">Lista klijenata</div>
+    <div id="clientList"></div>
+  </div>
+
+  <!-- ── TAB: Unos vežbe ── -->
+  <div class="tab-panel" id="tabLog">
+    <div class="section-title">Novi unos vežbe</div>
+    <div class="card" style="max-width:100%;">
+      <div class="field">
+        <label>Klijent</label>
+        <select id="logClient"></select>
+      </div>
+      <div class="field">
+        <label>Vežba</label>
+        <select id="logExercise">
+          <option value="Bench Press">Bench Press</option>
+          <option value="Back Extension">Back Extension</option>
+          <option value="Lateral Pull">Lateral Pull</option>
+          <option value="Leg Extension">Leg Extension</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Datum</label>
+        <input id="logDate" type="date"/>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div class="field">
+          <label>Ponavljanja</label>
+          <input id="logReps" type="number" placeholder="12" min="1"/>
+        </div>
+        <div class="field">
+          <label>Težina (kg) — opciono</label>
+          <input id="logWeight" type="number" placeholder="60" step="0.5" min="0"/>
+        </div>
+      </div>
+      <div class="field">
+        <label>Progress (%) — procena napretka za danas</label>
+        <input id="logProgress" type="number" placeholder="65" min="0" max="100"/>
+        <div style="margin-top:8px;">
+          <div class="prog-wrap">
+            <div class="prog-fill" id="progPreview" style="width:0%"></div>
+          </div>
+        </div>
+      </div>
+      <div id="alertLog" class="alert alert-err"></div>
+      <button class="btn btn-success" onclick="addLog()">💾 Sačuvaj unos</button>
+    </div>
+
+    <div class="section-title">Poslednji unosi</div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Klijent</th><th>Vežba</th><th>Datum</th>
+            <th>Reps</th><th>kg</th><th>%</th><th></th>
+          </tr>
+        </thead>
+        <tbody id="logTableBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── TAB: Charts ── -->
+  <div class="tab-panel" id="tabCharts">
+    <div class="section-title">Izaberi klijenta</div>
+    <select id="chartClient" onchange="renderCharts()" style="max-width:300px;"></select>
+    <div class="section-title">Izaberi vežbu</div>
+    <select id="chartExercise" onchange="renderCharts()" style="max-width:300px;">
+      <option value="Bench Press">Bench Press</option>
+      <option value="Back Extension">Back Extension</option>
+      <option value="Lateral Pull">Lateral Pull</option>
+      <option value="Leg Extension">Leg Extension</option>
+    </select>
+    <div class="chart-card">
+      <h3>📈 Progress (%)</h3>
+      <canvas id="chartProgress" height="220"></canvas>
+    </div>
+    <div class="chart-card">
+      <h3>🏋️ Težina (kg)</h3>
+      <canvas id="chartWeight" height="220"></canvas>
+    </div>
+    <div class="chart-card">
+      <h3>🔁 Ponavljanja</h3>
+      <canvas id="chartReps" height="220"></canvas>
+    </div>
+  </div>
+
+  <!-- ── TAB: Settings ── -->
+  <div class="tab-panel" id="tabSettings">
+    <div class="section-title">Nalog</div>
+    <div class="card" style="max-width:100%;">
+      <p style="font-size:0.9rem;color:var(--muted);margin-bottom:16px;">
+        Prijavljeni kao: <b style="color:var(--text)" id="settingsUser"></b>
+      </p>
+      <div class="section-title" style="margin-top:0;">Promeni lozinku</div>
+      <div class="field">
+        <label>Trenutna lozinka</label>
+        <input id="oldPass" type="password"/>
+      </div>
+      <div class="field">
+        <label>Nova lozinka</label>
+        <input id="newPass" type="password"/>
+      </div>
+      <div class="field">
+        <label>Potvrdi novu lozinku</label>
+        <input id="confirmPass" type="password"/>
+      </div>
+      <div id="alertSettings" class="alert alert-err"></div>
+      <button class="btn btn-primary" onclick="changePassword()">🔒 Promeni lozinku</button>
+      <hr class="divider"/>
+      <button class="btn btn-danger" onclick="logout()">🚪 Odjavi se</button>
+    </div>
+  </div>
+
+</div>
+
+<!-- ══════════════════════════════════════════
+     CLIENT DETAIL MODAL
+══════════════════════════════════════════ -->
+<div class="modal-bg" id="clientModal">
+  <div class="modal-box">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+      <div class="modal-title" id="modalClientName">Klijent</div>
+      <button class="btn btn-ghost btn-sm" onclick="closeModal()">✕</button>
+    </div>
+    <div id="modalStats" style="margin-bottom:12px;"></div>
+    <div class="table-wrap" style="max-height:320px;overflow-y:auto;">
+      <table>
+        <thead>
+          <tr><th>Vežba</th><th>Datum</th><th>Reps</th><th>kg</th><th>%</th></tr>
+        </thead>
+        <tbody id="modalTableBody"></tbody>
+      </table>
+    </div>
+    <button class="btn btn-ghost" style="margin-top:12px;" onclick="closeModal()">Zatvori</button>
+  </div>
+</div>
+
+<!-- JS -->
+<script src="app.js"></script>
+</body>
+</html>
