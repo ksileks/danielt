@@ -4,25 +4,25 @@ const DB = {
   set: (k, v) => localStorage.setItem(k, JSON.stringify(v)),
 };
 
-/* ---------- INIT ---------- */
-function init() {
-  if (!DB.get('users')) {
-    // default: admin / admin123 (SHA‑256 hash)
-    DB.set('users', [{
-      username: 'admin',
-      passHash: '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9',
-    }]);
-  }
-  if (!DB.get('clients')) DB.set('clients', []);
-  if (!DB.get('logs'))    DB.set('logs', []);
-}
-init();
-
 /* ---------- SHA‑256 (for password hashing) ---------- */
 async function sha256(msg) {
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(msg));
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
+
+/* ---------- INIT ---------- */
+async function init() {
+  // ensure we have a default user Daniel / daniel123
+  if (!DB.get('users')) {
+    const hash = await sha256('daniel123');
+    DB.set('users', [{ username: 'Daniel', passHash: hash }]);
+  }
+  if (!DB.get('clients')) DB.set('clients', []);
+  if (!DB.get('logs'))    DB.set('logs', []);
+}
+init().then(() => {
+  // nothing else needed here; login screen is shown by default
+});
 
 /* ---------- SESSION ---------- */
 let session = { user: null };
@@ -85,15 +85,33 @@ function showTab(id) {
 function addClient() {
   const first = document.getElementById('newClientFirst').value.trim();
   const last  = document.getElementById('newClientLast').value.trim();
-  if (!first || !last) { showAlert('alertClient', 'Unesite ime i prezime.'); return; }
+  const birth = parseInt(document.getElementById('newClientBirth').value);
+  const height = parseInt(document.getElementById('newClientHeight').value);
+  const weight = parseFloat(document.getElementById('newClientWeight').value);
+  if (!first || !last || isNaN(birth) || isNaN(height) || isNaN(weight)) {
+    showAlert('alertClient', 'Popunite sva polja za novog klijenta.'); return;
+  }
   const clients = DB.get('clients');
   if (clients.find(c => c.first === first && c.last === last)) {
     showAlert('alertClient', 'Klijent već postoji.'); return;
   }
-  clients.push({ id: Date.now(), first, last });
+  const bmi = (weight / ((height/100)*(height/100))).toFixed(1);
+  clients.push({
+    id: Date.now(),
+    first,
+    last,
+    birthYear: birth,
+    height,
+    weight,
+    bmi: parseFloat(bmi)
+  });
   DB.set('clients', clients);
+  // reset form
   document.getElementById('newClientFirst').value = '';
   document.getElementById('newClientLast').value  = '';
+  document.getElementById('newClientBirth').value = '';
+  document.getElementById('newClientHeight').value = '';
+  document.getElementById('newClientWeight').value = '';
   hideAlert('alertClient');
   refreshClientSelects();
   renderClientList();
@@ -109,12 +127,16 @@ function renderClientList() {
   el.innerHTML = clients.map(c => {
     const count = logs.filter(l => l.clientId === c.id).length;
     const lastLog = logs.filter(l => l.clientId === c.id)
-                        .sort((a, b) => b.date.localeCompare(a.date))[0];
+                        .sort((a,b)=>b.date.localeCompare(a.date))[0];
+    const bmiTxt = c.bmi ? `${c.bmi} kg/m²` : '—';
     return `
       <div class="client-item" onclick="openClientModal(${c.id})">
         <div>
           <div class="client-name">👤 ${c.first} ${c.last}</div>
-          <div class="client-meta">${count} unos(a) ${lastLog ? '· Poslednji: ' + lastLog.date : '· Nema unosa'}</div>
+          <div class="client-meta">
+            ${count} unos(a) ${lastLog ? '· Poslednji: ' + lastLog.date : '· Nema unosa'} ·
+            BMI: ${bmiTxt}
+          </div>
         </div>
         <div style="display:flex;align-items:center;gap:8px;">
           <span class="badge">${count}</span>
@@ -153,24 +175,37 @@ function addLog() {
   const date     = document.getElementById('logDate').value;
   const reps     = parseInt(document.getElementById('logReps').value);
   const weight   = parseFloat(document.getElementById('logWeight').value) || null;
-  const progress = parseInt(document.getElementById('logProgress').value);
-  if (!clientId || !date || !reps || isNaN(progress)) {
-    showAlert('alertLog', 'Popunite sva obavezna polja (klijent, datum, ponavljanja, progress %).');
-    return;
+  if (!clientId || !date || !reps || isNaN(reps)) {
+    showAlert('alertLog', 'Popunite sva obavezna polja (klijent, datum, ponavljanja).'); return;
   }
-  if (progress < 0 || progress > 100) {
-    showAlert('alertLog', 'Progress mora biti 0–100%.');
-    return;
+
+  // ----- calculate progress % (needs at least two entries for same client+exercise) -----
+  const allLogs = DB.get('logs') || [];
+  const same = allLogs.filter(l => l.clientId === clientId && l.exercise === exercise)
+                      .sort((a,b)=>a.date.localeCompare(b.date));
+  let progress = 0;
+  if (same.length >= 2) {
+    const first = same[0];
+    const latest = same[same.length-1];
+    const firstVal  = (first.weight ?? 0) * first.reps;
+    const latestVal = (latest.weight ?? 0) * latest.reps;
+    const pct = ((latestVal - firstVal) / firstVal) * 100;
+    progress = Math.max(0, Math.min(100, Math.round(pct)));
   }
-  const logs = DB.get('logs');
-  logs.push({ id: Date.now(), clientId, exercise, date, reps, weight, progress });
-  DB.set('logs', logs);
+
+  // ----- store log -----
+  const newLog = { id: Date.now(), clientId, exercise, date, reps, weight, progress };
+  allLogs.push(newLog);
+  DB.set('logs', allLogs);
+
   hideAlert('alertLog');
   showAlert('alertLog', '✅ Unos sačuvan!', 'ok');
   setTimeout(() => hideAlert('alertLog'), 2000);
+
+  // reset form (progress will be set to 0)
   document.getElementById('logReps').value     = '';
   document.getElementById('logWeight').value   = '';
-  document.getElementById('logProgress').value = '';
+  document.getElementById('logProgress').value = '0';
   document.getElementById('progPreview').style.width = '0%';
   renderLogTable();
   renderClientList();
@@ -179,7 +214,7 @@ function renderLogTable() {
   const logs    = DB.get('logs') || [];
   const clients = DB.get('clients') || [];
   const tbody   = document.getElementById('logTableBody');
-  const recent  = [...logs].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 30);
+  const recent  = [...logs].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,30);
   if (!recent.length) {
     tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);">Nema unosa.</td></tr>';
     return;
@@ -216,7 +251,7 @@ function renderCharts() {
   if (!clientId) return;
   const logs = (DB.get('logs') || [])
     .filter(l => l.clientId === clientId && l.exercise === exercise)
-    .sort((a, b) => a.date.localeCompare(b.date));
+    .sort((a,b)=>a.date.localeCompare(b.date));
   const labels   = logs.map(l => l.date);
   const progress = logs.map(l => l.progress);
   const weights  = logs.map(l => l.weight ?? 0);
@@ -269,12 +304,12 @@ function openClientModal(cid) {
   const logs    = DB.get('logs') || [];
   const c = clients.find(x => x.id === cid);
   if (!c) return;
-  const cLogs = logs.filter(l => l.clientId === cid).sort((a, b) => b.date.localeCompare(a.date));
+  const cLogs = logs.filter(l => l.clientId === cid).sort((a,b)=>b.date.localeCompare(a.date));
   document.getElementById('modalClientName').textContent = `👤 ${c.first} ${c.last}`;
   const avgProg = cLogs.length
-    ? Math.round(cLogs.reduce((s, l) => s + l.progress, 0) / cLogs.length)
+    ? Math.round(cLogs.reduce((s,l)=>s+l.progress,0)/cLogs.length)
     : 0;
-  const maxKg = cLogs.filter(l => l.weight).reduce((m, l) => Math.max(m, l.weight), 0);
+  const maxKg = cLogs.filter(l=>l.weight).reduce((m,l)=>Math.max(m,l.weight),0);
   document.getElementById('modalStats').innerHTML = `
     <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:8px;">
       <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 16px;flex:1;min-width:100px;text-align:center;">
@@ -286,7 +321,7 @@ function openClientModal(cid) {
         <div style="font-size:0.72rem;color:var(--muted);">PROSEČAN PROGRESS</div>
       </div>
       <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 16px;flex:1;min-width:100px;text-align:center;">
-        <div style="font-size:1.4rem;font-weight:700;color:var(--warn)">${maxKg || '—'} ${maxKg ? 'kg' : ''}</div>
+        <div style="font-size:1.4rem;font-weight:700;color:var(--warn)">${maxKg||'—'} ${maxKg?'kg':''}</div>
         <div style="font-size:0.72rem;color:var(--muted);">MAX TEŽINA</div>
       </div>
     </div>`;
